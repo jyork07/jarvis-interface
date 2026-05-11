@@ -4,13 +4,14 @@ import { cn } from "@/lib/utils";
 
 interface CommandInputProps {
   onSubmit: (text: string) => void;
-  onMicTranscript: () => Promise<void>;
+  onMicStart: () => Promise<void>;
+  onMicStop: () => Promise<void>;
+  micState: "idle" | "listening" | "transcribing";
   disabled?: boolean;
 }
 
-export function CommandInput({ onSubmit, onMicTranscript, disabled }: CommandInputProps) {
+export function CommandInput({ onSubmit, onMicStart, onMicStop, micState, disabled }: CommandInputProps) {
   const [text, setText] = useState("");
-  const [listening, setListening] = useState(false);
   const ref = useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => {
@@ -35,56 +36,58 @@ export function CommandInput({ onSubmit, onMicTranscript, disabled }: CommandInp
   };
 
   const handleMic = async () => {
-    if (listening || disabled) return;
-    setListening(true);
-    try {
-      await onMicTranscript();
-    } finally {
-      setListening(false);
-    }
+    if (disabled) return;
+    if (micState === "idle") await onMicStart();
+    else if (micState === "listening") await onMicStop();
   };
+
+  const placeholder =
+    micState === "listening"
+      ? "Listening… tap to stop"
+      : micState === "transcribing"
+      ? "Transcribing…"
+      : "Hey Jarvis, what can I help you with?";
+
+  const inputDisabled = disabled || micState !== "idle";
 
   return (
     <div className="glass-panel rounded-2xl p-3 sm:p-4">
       <div className="flex items-end gap-2 sm:gap-3">
-        {/* Mic button */}
         <button
           type="button"
           onClick={handleMic}
-          disabled={disabled}
-          aria-label={listening ? "Listening" : "Activate microphone"}
+          disabled={disabled || micState === "transcribing"}
+          aria-label={micState === "listening" ? "Stop listening" : "Activate microphone"}
           className={cn(
             "relative shrink-0 w-12 h-12 sm:w-14 sm:h-14 rounded-xl flex items-center justify-center transition-all duration-300",
             "border border-border/60 bg-card/60 hover:bg-card hover:border-jarvis-glow/50",
-            listening && "bg-jarvis-glow/15 border-jarvis-glow animate-pulse-ring",
-            disabled && "opacity-50 cursor-not-allowed",
+            micState === "listening" && "bg-jarvis-glow/15 border-jarvis-glow animate-pulse-ring",
+            (disabled || micState === "transcribing") && "opacity-50 cursor-not-allowed",
           )}
         >
-          {listening ? (
+          {micState === "listening" ? (
             <Square className="w-5 h-5 text-jarvis-glow fill-jarvis-glow" />
           ) : (
-            <Mic className={cn("w-5 h-5 transition-colors", "text-foreground/80")} />
+            <Mic className="w-5 h-5 text-foreground/80" />
           )}
         </button>
 
-        {/* Text input */}
         <div className="flex-1 relative">
           <textarea
             ref={ref}
-            value={listening ? "" : text}
-            disabled={listening || disabled}
+            value={inputDisabled ? "" : text}
+            disabled={inputDisabled}
             onChange={(e) => setText(e.target.value)}
             onKeyDown={handleKey}
             rows={1}
-            placeholder={listening ? "Listening…" : "Hey Jarvis, what can I help you with?"}
+            placeholder={placeholder}
             className={cn(
               "w-full resize-none bg-transparent outline-none px-2 py-3 text-base sm:text-lg",
-              "placeholder:text-muted-foreground/60 text-foreground",
-              "scrollbar-thin",
+              "placeholder:text-muted-foreground/60 text-foreground scrollbar-thin",
             )}
           />
-          {listening && (
-            <div className="absolute inset-x-2 bottom-2 flex items-center gap-1 h-6">
+          {micState === "listening" && (
+            <div className="absolute inset-x-2 bottom-2 flex items-center gap-1 h-6 pointer-events-none">
               {[...Array(28)].map((_, i) => (
                 <span
                   key={i}
@@ -99,11 +102,10 @@ export function CommandInput({ onSubmit, onMicTranscript, disabled }: CommandInp
           )}
         </div>
 
-        {/* Send button */}
         <button
           type="button"
           onClick={submit}
-          disabled={!text.trim() || disabled || listening}
+          disabled={!text.trim() || disabled || micState !== "idle"}
           aria-label="Send"
           className={cn(
             "shrink-0 w-12 h-12 sm:w-14 sm:h-14 rounded-xl flex items-center justify-center transition-all",
@@ -116,8 +118,11 @@ export function CommandInput({ onSubmit, onMicTranscript, disabled }: CommandInp
         </button>
       </div>
       <div className="px-2 pt-2 flex items-center justify-between text-[10px] uppercase tracking-wider text-muted-foreground/60">
-        <span>Press <kbd className="px-1 py-0.5 rounded border border-border/60 text-foreground/70 font-mono normal-case">Enter</kbd> to send · <kbd className="px-1 py-0.5 rounded border border-border/60 text-foreground/70 font-mono normal-case">Shift+Enter</kbd> newline</span>
-        <span className="hidden sm:inline">Secure channel · End-to-End</span>
+        <span>
+          Press <kbd className="px-1 py-0.5 rounded border border-border/60 text-foreground/70 font-mono normal-case">Enter</kbd> to send ·{" "}
+          <kbd className="px-1 py-0.5 rounded border border-border/60 text-foreground/70 font-mono normal-case">Shift+Enter</kbd> newline
+        </span>
+        <span className="hidden sm:inline">Real endpoints only</span>
       </div>
     </div>
   );
