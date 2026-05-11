@@ -44,9 +44,13 @@ export function CommandInput({ onSubmit, onMicStart, onMicStop, micState, voiceM
 
   const placeholder =
     micState === "listening"
-      ? "Listening… tap to stop"
+      ? voiceMode === "continuous"
+        ? "Live · speak naturally, auto-sends on pause"
+        : "Listening… tap to stop"
       : micState === "transcribing"
       ? "Transcribing…"
+      : voiceMode === "continuous"
+      ? "Live voice on · or type a command"
       : "Hey Jarvis, what can I help you with?";
 
   const inputDisabled = disabled || micState !== "idle";
