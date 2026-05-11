@@ -7,10 +7,11 @@ interface CommandInputProps {
   onMicStart: () => Promise<void>;
   onMicStop: () => Promise<void>;
   micState: "idle" | "listening" | "transcribing";
+  voiceMode?: "ptt" | "continuous";
   disabled?: boolean;
 }
 
-export function CommandInput({ onSubmit, onMicStart, onMicStop, micState, disabled }: CommandInputProps) {
+export function CommandInput({ onSubmit, onMicStart, onMicStop, micState, voiceMode = "ptt", disabled }: CommandInputProps) {
   const [text, setText] = useState("");
   const ref = useRef<HTMLTextAreaElement>(null);
 
