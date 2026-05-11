@@ -1,7 +1,10 @@
-// Service layer for backend integration. Swap mocks with real endpoints later.
+// Real endpoint clients. No mocks. Every function either returns the real
+// response or throws an Error whose message is suitable for the UI.
+
+import { JarvisConfig } from "./config";
 
 export type AgentSection = {
-  label: "Observation" | "Interpretation" | "Recommended Action" | "Final Output";
+  label: "Observation" | "Interpretation" | "Recommended Action" | "Final Output" | "Response";
   content: string;
 };
 
@@ -10,56 +13,161 @@ export type JarvisResponse = {
   agent: string;
 };
 
-const MOCK_RESPONSES: Record<string, JarvisResponse> = {
-  default: {
-    agent: "Ollama",
-    sections: [
-      { label: "Observation", content: "I parsed your request and cross-referenced it against the active KNOWLEDGE_BASE.md protocol. No ambiguity detected in the intent." },
-      { label: "Interpretation", content: "You're looking for a concise, actionable response — not a research paper. I'll prioritize clarity and the smallest viable next step." },
-      { label: "Recommended Action", content: "Proceed with the suggested path below. I've left contextual hooks in case you'd like to drill deeper into any single point." },
-      { label: "Final Output", content: "Done. Standing by for the next directive, sir." },
-    ],
-  },
-  weather: {
-    agent: "Ollama",
-    sections: [
-      { label: "Observation", content: "Local sensor mesh reports clear skies, 21°C, humidity 54%. No precipitation events in the next 6 hours." },
-      { label: "Interpretation", content: "Conditions favor outdoor activity. UV index is moderate around midday." },
-      { label: "Final Output", content: "Pleasant afternoon ahead — light layer recommended after 19:00." },
-    ],
-  },
-  lights: {
-    agent: "HomeAutomation",
-    sections: [
-      { label: "Observation", content: "Three zones are currently active: Living Room, Kitchen, Study. Total draw: 142W." },
-      { label: "Recommended Action", content: "Dim Living Room to 40% to match ambient lux levels and reduce eye strain." },
-      { label: "Final Output", content: "Lighting profile 'Evening Calm' is one tap away. Shall I deploy it?" },
-    ],
-  },
+// ─── Telegram pipeline ──────────────────────────────────────────────────────
+// Sends user text to the configured Telegram wrapper endpoint. Expected to
+// proxy through to the Telegram bot + Ollama and return a JSON payload.
+export async function sendToTelegramPipeline(
+  text: string,
+  config: JarvisConfig,
+  signal?: AbortSignal,
+): Promise<JarvisResponse> {
+  if (!config.telegramEndpoint) throw new Error("Telegram endpoint not configured");
+
+  const res = await fetch(config.telegramEndpoint, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ text, source: "jarvis-gui" }),
+    signal,
+  });
+
+  if (!res.ok) throw new Error(`Telegram endpoint error (${res.status})`);
+
+  const data = await res.json().catch(() => {
+    throw new Error("Telegram endpoint returned non-JSON response");
+  });
+
+  return normalizeResponse(data);
+}
+
+// ─── Ollama direct (optional, used when explicitly targeted) ────────────────
+export async function sendToOllama(
+  prompt: string,
+  config: JarvisConfig,
+  signal?: AbortSignal,
+): Promise<JarvisResponse> {
+  if (!config.ollamaEndpoint) throw new Error("Ollama agent not reachable");
+
+  const res = await fetch(config.ollamaEndpoint, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ prompt }),
+    signal,
+  });
+
+  if (!res.ok) throw new Error(`Ollama endpoint error (${res.status})`);
+  const data = await res.json().catch(() => {
+    throw new Error("Ollama endpoint returned non-JSON response");
+  });
+  return normalizeResponse(data, "Ollama");
+}
+
+// ─── STT ────────────────────────────────────────────────────────────────────
+export async function transcribeAudio(
+  audioBlob: Blob,
+  config: JarvisConfig,
+  signal?: AbortSignal,
+): Promise<string> {
+  if (!config.sttEndpoint) throw new Error("STT service unavailable");
+
+  const form = new FormData();
+  form.append("audio", audioBlob, "input.webm");
+
+  const res = await fetch(config.sttEndpoint, {
+    method: "POST",
+    body: form,
+    signal,
+  });
+
+  if (!res.ok) throw new Error(`STT service error (${res.status})`);
+  const data = await res.json().catch(() => {
+    throw new Error("STT service returned non-JSON response");
+  });
+
+  const transcript: unknown = data.text ?? data.transcript ?? data.result;
+  if (typeof transcript !== "string" || !transcript.trim()) {
+    throw new Error("STT service returned no transcript");
+  }
+  return transcript.trim();
+}
+
+// ─── Home Assistant ─────────────────────────────────────────────────────────
+export type HomeAssistantStatus = {
+  ok: boolean;
+  message: string;
+  details?: { entityId: string; state: string }[];
 };
 
-function pickMock(text: string): JarvisResponse {
-  const t = text.toLowerCase();
-  if (t.includes("weather") || t.includes("temperature")) return MOCK_RESPONSES.weather;
-  if (t.includes("light") || t.includes("lamp")) return MOCK_RESPONSES.lights;
-  return MOCK_RESPONSES.default;
+export async function fetchHomeAssistantStatus(
+  config: JarvisConfig,
+  signal?: AbortSignal,
+): Promise<HomeAssistantStatus> {
+  if (!config.homeAssistantUrl || !config.homeAssistantToken) {
+    throw new Error("Home Assistant unavailable");
+  }
+
+  const url = config.homeAssistantUrl.replace(/\/$/, "") + "/api/";
+  const res = await fetch(url, {
+    headers: { Authorization: `Bearer ${config.homeAssistantToken}` },
+    signal,
+  });
+
+  if (!res.ok) throw new Error(`Home Assistant error (${res.status})`);
+  const data = await res.json().catch(() => null);
+  return {
+    ok: true,
+    message: data?.message ?? "API running",
+  };
 }
 
-// Placeholder: send text input to Telegram bot wrapper / Ollama pipeline
-export async function sendToTelegramPipeline(text: string): Promise<JarvisResponse> {
-  // TODO: replace with real fetch to /api/telegram or edge function
-  await new Promise((r) => setTimeout(r, 1400 + Math.random() * 800));
-  return pickMock(text);
+export async function callHomeAssistantService(
+  domain: string,
+  service: string,
+  serviceData: Record<string, unknown>,
+  config: JarvisConfig,
+): Promise<unknown> {
+  if (!config.homeAssistantUrl || !config.homeAssistantToken) {
+    throw new Error("Home Assistant unavailable");
+  }
+  const url =
+    config.homeAssistantUrl.replace(/\/$/, "") + `/api/services/${domain}/${service}`;
+  const res = await fetch(url, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${config.homeAssistantToken}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(serviceData),
+  });
+  if (!res.ok) throw new Error(`Home Assistant service error (${res.status})`);
+  return res.json();
 }
 
-// Placeholder: route mic audio to STT, then into the pipeline
-export async function transcribeAudio(_audioBlob?: Blob): Promise<string> {
-  await new Promise((r) => setTimeout(r, 900));
-  const samples = [
-    "What's the status of the home network?",
-    "Jarvis, dim the living room lights.",
-    "Brief me on today's weather.",
-    "Run a system diagnostic.",
-  ];
-  return samples[Math.floor(Math.random() * samples.length)];
+// ─── Response normalization ─────────────────────────────────────────────────
+function normalizeResponse(data: any, defaultAgent = "Ollama"): JarvisResponse {
+  // Backend may return either { sections, agent } or { text } or { response }.
+  if (Array.isArray(data?.sections)) {
+    return {
+      agent: typeof data.agent === "string" ? data.agent : defaultAgent,
+      sections: data.sections
+        .filter((s: any) => s && typeof s.content === "string")
+        .map((s: any) => ({
+          label: (s.label as AgentSection["label"]) ?? "Response",
+          content: s.content,
+        })),
+    };
+  }
+
+  const text: string | undefined =
+    typeof data === "string"
+      ? data
+      : data?.text ?? data?.response ?? data?.message ?? data?.result;
+
+  if (typeof text !== "string" || !text.trim()) {
+    throw new Error("Backend returned an empty response");
+  }
+
+  return {
+    agent: typeof data?.agent === "string" ? data.agent : defaultAgent,
+    sections: [{ label: "Response", content: text.trim() }],
+  };
 }
