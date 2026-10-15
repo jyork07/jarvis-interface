@@ -26,7 +26,7 @@ export function UserBubble({ text, ts }: { text: string; ts: Date }) {
           <User className="w-4 h-4 text-muted-foreground" />
         </div>
         <div className="flex flex-col items-end gap-1">
-          <div className="rounded-2xl rounded-tr-sm px-4 py-2.5 bg-secondary/70 border border-border/60 text-sm text-foreground/95 whitespace-pre-wrap">
+          <div className="rounded-sm rounded-tr-sm px-4 py-2.5 bg-secondary/70 border border-border/60 text-sm text-foreground/95 whitespace-pre-wrap break-words">
             {text}
           </div>
           <span className="text-[10px] text-muted-foreground/60 px-1">{formatTime(ts)}</span>
@@ -53,7 +53,7 @@ export function JarvisBubble({
         </div>
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 mb-2">
-            <span className="text-xs font-medium text-foreground">Jarvis</span>
+            <span className="text-xs font-medium text-foreground">Scarlet</span>
             <span className="text-[10px] uppercase tracking-wider font-mono text-jarvis-glow/70">{agent}</span>
             <span className="text-[10px] text-muted-foreground/60 ml-auto">{formatTime(ts)}</span>
           </div>
@@ -61,10 +61,10 @@ export function JarvisBubble({
             {sections.map((s, i) => (
               <div
                 key={i}
-                className={`rounded-xl border bg-card/50 backdrop-blur-sm px-4 py-3 ${labelTone[s.label]}`}
+                className={`rounded-sm border bg-card/50 backdrop-blur-sm px-4 py-3 ${labelTone[s.label]}`}
               >
                 <div className="text-[10px] uppercase tracking-[0.18em] font-medium mb-1">{s.label}</div>
-                <div className="text-sm text-foreground/90 leading-relaxed whitespace-pre-wrap">{s.content}</div>
+                <div className="text-sm text-foreground/90 leading-relaxed whitespace-pre-wrap break-words">{s.content}</div>
               </div>
             ))}
           </div>
@@ -87,7 +87,7 @@ export function SystemErrorBubble({ message, ts }: { message: string; ts: Date }
             <span className="text-[10px] uppercase tracking-wider font-mono text-jarvis-warn/70">status</span>
             <span className="text-[10px] text-muted-foreground/60 ml-auto">{formatTime(ts)}</span>
           </div>
-          <div className="rounded-xl border border-jarvis-warn/40 bg-jarvis-warn/5 px-4 py-3 text-sm text-jarvis-warn/95">
+          <div className="rounded-sm border border-jarvis-warn/40 bg-jarvis-warn/5 px-4 py-3 text-sm text-jarvis-warn/95">
             {message}
           </div>
         </div>
@@ -103,7 +103,7 @@ export function ThinkingIndicator({ agent = "Ollama" }: { agent?: string }) {
         <div className="w-8 h-8 rounded-full bg-gradient-to-br from-jarvis-glow to-jarvis-teal flex items-center justify-center shrink-0 shadow-[0_0_20px_hsl(var(--jarvis-glow)/0.5)] animate-glow-pulse">
           <Sparkles className="w-4 h-4 text-jarvis-deep" />
         </div>
-        <div className="rounded-xl border border-jarvis-glow/20 bg-card/60 px-4 py-3 flex items-center gap-3">
+        <div className="rounded-sm border border-jarvis-glow/20 bg-card/60 px-4 py-3 flex items-center gap-3">
           <div className="flex gap-1">
             <span className="w-1.5 h-1.5 rounded-full bg-jarvis-glow animate-thinking-dot" style={{ animationDelay: "0ms" }} />
             <span className="w-1.5 h-1.5 rounded-full bg-jarvis-glow animate-thinking-dot" style={{ animationDelay: "200ms" }} />

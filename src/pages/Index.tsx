@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
-import { LayoutDashboard, Mic, Radio, Settings as SettingsIcon, X, Zap } from "lucide-react";
+import { Activity, ArrowUpRight, AudioLines, Bot, CircleDot, Clock3, Database, Diamond, Gauge, Home, Layers3, Mic, Radio, Settings as SettingsIcon, ShieldCheck, SlidersHorizontal, Terminal, Workflow, Wrench, Zap } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import { CommandInput } from "@/components/jarvis/CommandInput";
-import { StatusPanel } from "@/components/jarvis/StatusPanel";
 import { HudOrb, OrbState } from "@/components/jarvis/HudOrb";
 import {
   ChatMessage,
@@ -24,7 +24,15 @@ type VoiceMode = "ptt" | "continuous";
 export default function Index() {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [thinking, setThinking] = useState(false);
-  const [statusOpen, setStatusOpen] = useState(false);
+  const [view, setView] = useState("home");
+  const [now, setNow] = useState(new Date());
+  const [configRevision, setConfigRevision] = useState(0);
+  useEffect(() => {
+    const timer = setInterval(() => setNow(new Date()), 1000);
+    const refresh = () => setConfigRevision(v => v + 1);
+    window.addEventListener("jarvis:config-changed", refresh);
+    return () => { clearInterval(timer); window.removeEventListener("jarvis:config-changed", refresh); };
+  }, []);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [micState, setMicState] = useState<MicState>("idle");
   const [voiceMode, setVoiceMode] = useState<VoiceMode>("ptt");
@@ -152,168 +160,77 @@ export default function Index() {
     ? "thinking"
     : "idle";
 
+  const endpoints = [
+    { name: "TELEGRAM GATEWAY", label: "Telegram", icon: Radio, value: config.telegramEndpoint },
+    { name: "OLLAMA AGENT", label: "Ollama", icon: Bot, value: config.ollamaEndpoint },
+    { name: "VOICE BRIDGE", label: "Speech to text", icon: AudioLines, value: config.sttEndpoint },
+    { name: "HOME ASSISTANT", label: "Home Assistant", icon: Home, value: config.homeAssistantUrl },
+  ];
+  const navigation = [
+    { id: "home", label: "Home / Core", icon: CircleDot },
+    { id: "conversation", label: "Conversation", icon: Terminal },
+    { id: "memory", label: "Memory", icon: Database, unavailable: true },
+    { id: "skills", label: "Skills", icon: Layers3, unavailable: true },
+    { id: "tools", label: "Tools", icon: Wrench, unavailable: true },
+    { id: "automations", label: "Automations", icon: Workflow, unavailable: true },
+    { id: "services", label: "Services", icon: Radio },
+    { id: "diagnostics", label: "Diagnostics", icon: Activity },
+    { id: "config", label: "System Config", icon: SlidersHorizontal },
+    { id: "settings", label: "Settings", icon: SettingsIcon },
+  ];
+  const lastReply = [...messages].reverse().find(m => m.role === "jarvis");
+  const coreLabel = thinking ? "PROCESSING" : micState === "listening" ? "LISTENING" : micState === "transcribing" ? "TRANSCRIBING" : configMissing ? "AWAITING LINK" : "SCARLET STANDBY";
+  const composer = <CommandInput onSubmit={handleSubmit} onMicStart={handleMicStart} onMicStop={handleMicStop} micState={micState} disabled={thinking} voiceMode={voiceMode} />;
+  const timeline = <div ref={logRef} className="scarlet-timeline scrollbar-thin" aria-live="polite">
+    {messages.length === 0 && <div className="timeline-empty"><Terminal size={24} /><span>No conversation yet.</span></div>}
+    {messages.map(m => m.role === "user" ? <UserBubble key={m.id} text={m.text} ts={m.ts} /> : m.role === "jarvis" ? <JarvisBubble key={m.id} sections={m.sections} agent={m.agent} ts={m.ts} /> : <SystemErrorBubble key={m.id} message={m.message} ts={m.ts} />)}
+    {thinking && <ThinkingIndicator />}
+  </div>;
   return (
-    <div className="min-h-screen w-full flex flex-col">
-      <header className="px-4 sm:px-6 lg:px-8 py-4 flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <div className="relative w-9 h-9 rounded-lg bg-gradient-to-br from-jarvis-glow to-jarvis-teal flex items-center justify-center shadow-[0_0_24px_hsl(var(--jarvis-glow)/0.4)]">
-            <span className="text-jarvis-deep font-bold text-sm">J</span>
-            <span
-              className={`absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full border-2 border-background animate-glow-pulse ${
-                configMissing ? "bg-jarvis-warn" : "bg-jarvis-ok"
-              }`}
-            />
-          </div>
-          <div>
-            <h1 className="text-sm font-semibold tracking-wide glow-text">JARVIS</h1>
-            <p className="text-[10px] uppercase tracking-[0.2em] text-muted-foreground">
-              Just a Rather Very Intelligent System
-            </p>
-          </div>
-        </div>
-        <div className="flex items-center gap-2">
-          <button
-            onClick={toggleVoiceMode}
-            title={voiceMode === "ptt" ? "Switch to continuous voice" : "Switch to push-to-talk"}
-            className={cn(
-              "px-3 h-9 rounded-lg border text-[10px] uppercase tracking-[0.16em] flex items-center gap-1.5 transition",
-              voiceMode === "continuous"
-                ? "border-jarvis-glow/60 bg-jarvis-glow/10 text-jarvis-glow shadow-[0_0_16px_hsl(var(--jarvis-glow)/0.3)]"
-                : "border-border/60 bg-card/60 text-foreground/80 hover:border-jarvis-glow/40",
-            )}
-          >
-            {voiceMode === "continuous" ? (
-              <>
-                <Zap className="w-3 h-3" /> Live
-              </>
-            ) : (
-              <>
-                <Mic className="w-3 h-3" /> PTT
-              </>
-            )}
-          </button>
-          <button
-            onClick={() => setSettingsOpen(true)}
-            className="p-2 rounded-lg border border-border/60 bg-card/60 hover:border-jarvis-glow/50 transition"
-            aria-label="Open settings"
-          >
-            <SettingsIcon className="w-4 h-4" />
-          </button>
-          <button
-            onClick={() => setStatusOpen(true)}
-            className="lg:hidden p-2 rounded-lg border border-border/60 bg-card/60 hover:border-jarvis-glow/50 transition"
-            aria-label="Open status panel"
-          >
-            <LayoutDashboard className="w-4 h-4" />
-          </button>
-        </div>
-      </header>
-
-      <main className="flex-1 px-4 sm:px-6 lg:px-8 pb-4 sm:pb-6 lg:pb-8 grid grid-cols-1 lg:grid-cols-[1fr_320px] gap-4 lg:gap-6 min-h-0">
-        <section className="flex flex-col gap-4 min-h-0">
-          <CommandInput
-            onSubmit={handleSubmit}
-            onMicStart={handleMicStart}
-            onMicStop={handleMicStop}
-            micState={micState}
-            disabled={thinking}
-            voiceMode={voiceMode}
-          />
-
-          <div className="glass-panel rounded-2xl flex-1 min-h-0 flex flex-col overflow-hidden">
-            <div className="px-5 py-3 border-b border-border/40 flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <span
-                  className={`w-1.5 h-1.5 rounded-full animate-glow-pulse ${
-                    configMissing ? "bg-jarvis-warn" : "bg-jarvis-ok"
-                  }`}
-                />
-                <span className="text-[10px] uppercase tracking-[0.2em] text-muted-foreground">
-                  Communication Log
-                </span>
-                {voiceMode === "continuous" && (
-                  <span className="ml-2 flex items-center gap-1 text-[10px] uppercase tracking-[0.16em] text-jarvis-glow">
-                    <Radio className="w-3 h-3 animate-pulse" /> Live voice
-                  </span>
-                )}
+    <div className="scarlet-shell" data-config-revision={configRevision}>
+      <div className="scarlet-layout">
+        <aside className="scarlet-sidebar">
+          <div className="scarlet-brand"><Diamond size={20} /><span>SCARLET <b>HUD</b></span></div>
+          <div className="sidebar-caption">CONTROL INTERFACE / 01</div>
+          <nav aria-label="SCARLET screens">
+            {navigation.map(item => <Button key={item.id} variant="ghost" className="scarlet-nav" aria-current={view === item.id ? "page" : undefined} disabled={item.unavailable} title={item.unavailable ? "Service not connected" : item.label} onClick={() => item.id === "config" || item.id === "settings" ? setSettingsOpen(true) : setView(item.id)}><item.icon size={15} /><span>{item.label}</span>{view === item.id && <span className="nav-indicator" />}</Button>)}
+          </nav>
+          <div className="sidebar-bottom"><span className="scarlet-eyebrow">JARVIS / V3.0</span><div><span className="status-dot" />{configMissing ? "Configuration required" : "Endpoints configured"}</div><span className="sidebar-version">SCARLET CONTROL SYSTEM</span></div>
+        </aside>
+        <div className="scarlet-workspace">
+          <header className="scarlet-header">
+            <div><span className="scarlet-eyebrow">LIVE CONTROL SYSTEM <span className="text-muted-foreground">/ JARVIS BRIDGE</span></span><h1>SCARLET <span>{configMissing ? "awaits connection" : "is on standby"}</span></h1></div>
+            <div className="header-status"><span className="scarlet-badge"><span className="status-dot" />LINK · {configMissing ? "NOT CONFIGURED" : "UNVERIFIED"}</span><Button variant="ghost" size="icon" title="Open settings" aria-label="Open settings" onClick={() => setSettingsOpen(true)}><SettingsIcon /></Button></div>
+          </header>
+          <main className="scarlet-main">
+            <div className="view-heading"><div className="flex items-center gap-2"><span className="text-primary">◇</span><span>{view === "home" ? "CORE OVERVIEW" : view.toUpperCase()}</span></div><span className="flex items-center gap-2"><Clock3 size={12} />{now.toLocaleTimeString("en-GB")}<span className="hidden sm:inline"> / {now.toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" }).toUpperCase()}</span></span></div>
+            {view === "home" && <>
+              <div className="core-grid">
+                <section className="neural-stage" aria-label="Scarlet neural core">
+                  <div className="stage-heading"><span className="scarlet-eyebrow">NEURAL CORE / 01</span><h2>SCARLET CORE</h2></div>
+                  <span className="stage-index">SYS.001 <span className="text-primary">+</span></span>
+                  <div className="stage-core"><HudOrb state={orbState} level={micLevel} size={340} /><div className="core-presence"><strong>{coreLabel}</strong><span>{configMissing ? "GATEWAY CONFIGURATION REQUIRED" : "READY FOR YOUR DIRECTIVE"}</span></div></div>
+                  <div className="stage-coordinate">NEURAL INTERFACE <span>01 / CORE</span></div>
+                  <div className="core-telemetry">{[["GATEWAY", configMissing ? "NO LINK" : "CONFIGURED"], ["AGENT", config.ollamaEndpoint ? "UNVERIFIED" : "NOT LINKED"], ["VOICE", micState === "listening" ? "LISTENING" : config.sttEndpoint ? "STANDBY" : "NOT LINKED"], ["ACTIVE TASK", thinking ? "PROCESSING" : "IDLE"]].map(([label, value]) => <div key={label}><span>{label}</span><strong>{value}</strong></div>)}</div>
+                </section>
+                <div className="core-right">
+                  <section className="hud-section activity-section"><div className="section-title"><div><span className="scarlet-eyebrow">ACTIVITY / LIVE</span><h2>Recent activity</h2></div><Activity size={17} className="text-primary" /></div>
+                    {messages.length === 0 ? <div className="activity-empty"><div className="empty-cross">+</div><p>No sessions yet</p><span>Awaiting the first directive</span></div> : <div className="recent-events">{messages.slice(-3).reverse().map(m => <div key={m.id}><span className="scarlet-eyebrow">{m.role === "system-error" ? "SYSTEM" : m.role === "user" ? "COMMAND" : "RESPONSE"} / {m.ts.toLocaleTimeString("en-GB")}</span><p>{m.role === "user" ? m.text : m.role === "system-error" ? m.message : m.sections.map(s => s.content).join(" ")}</p></div>)}</div>}
+                    <Button variant="ghost" className="section-link" onClick={() => setView("conversation")}>Open conversation<ArrowUpRight size={14} /></Button>
+                  </section>
+                  <section className="hud-section health-section"><div className="section-title"><div><span className="scarlet-eyebrow">SYSTEM TELEMETRY</span><h2>System health</h2></div><Gauge size={17} className="text-primary" /></div><dl className="health-list"><div><dt>Bridge connection</dt><dd>{configMissing ? "Not configured" : "Unverified"}</dd></div><div><dt>Voice channel</dt><dd>{micState === "idle" ? config.sttEndpoint ? "Configured" : "Not configured" : micState}</dd></div><div><dt>Agent response</dt><dd>{thinking ? "Processing" : lastReply ? "Received" : "No activity"}</dd></div></dl><div className="health-foot"><ShieldCheck size={12} /><span>{configMissing ? "Waiting for a real endpoint" : "Connection verified only on response"}</span></div></section>
+                </div>
               </div>
-              <span className="text-[10px] font-mono text-muted-foreground/60">
-                {messages.length} {messages.length === 1 ? "entry" : "entries"}
-              </span>
-            </div>
-            <div ref={logRef} className="flex-1 overflow-y-auto scrollbar-thin px-4 sm:px-6 py-5 space-y-6">
-              {messages.length === 0 && !thinking && (
-                <div className="h-full flex flex-col items-center justify-center text-center px-6 py-8 gap-6">
-                  <HudOrb state={orbState} level={micLevel} size={260} />
-                  <div className="max-w-sm">
-                    <h2 className="text-sm font-medium text-foreground/90 mb-1 tracking-wider uppercase">
-                      {orbState === "idle" ? "Awaiting directive" : orbState === "listening" ? "I'm listening" : "Working on it"}
-                    </h2>
-                    <p className="text-xs text-muted-foreground leading-relaxed">
-                      {configMissing
-                        ? "No backend endpoints are configured. Open settings to connect the Telegram, STT, Ollama, and Home Assistant services."
-                        : voiceMode === "continuous"
-                        ? "Live voice mode is on. Speak naturally — I'll auto-send when you pause."
-                        : "Type a command or hold the mic. All requests run through your real endpoints."}
-                    </p>
-                  </div>
-                  {configMissing && (
-                    <button
-                      onClick={() => setSettingsOpen(true)}
-                      className="px-4 py-2 rounded-lg text-xs font-medium bg-gradient-to-br from-jarvis-glow to-jarvis-teal text-jarvis-deep shadow-[0_0_24px_hsl(var(--jarvis-glow)/0.3)] hover:shadow-[0_0_32px_hsl(var(--jarvis-glow)/0.55)] transition"
-                    >
-                      Configure endpoints
-                    </button>
-                  )}
-                </div>
-              )}
-
-              {messages.length > 0 && (
-                <div className="flex justify-center pb-2">
-                  <HudOrb state={orbState} level={micLevel} size={120} />
-                </div>
-              )}
-
-              {messages.map((m) => {
-                if (m.role === "user") return <UserBubble key={m.id} text={m.text} ts={m.ts} />;
-                if (m.role === "jarvis")
-                  return <JarvisBubble key={m.id} sections={m.sections} agent={m.agent} ts={m.ts} />;
-                return <SystemErrorBubble key={m.id} message={m.message} ts={m.ts} />;
-              })}
-              {thinking && <ThinkingIndicator />}
-            </div>
-          </div>
-        </section>
-
-        <div className="hidden lg:block min-h-0">
-          <StatusPanel onOpenSettings={() => setSettingsOpen(true)} />
+              <section className="orbit-section"><div className="section-title"><h2>Orbiting systems</h2><span className="scarlet-eyebrow">ADAPTERS / {endpoints.filter(e => e.value).length} CONFIGURED</span></div><div className="orbit-grid">{endpoints.map(e => <Button key={e.name} variant="outline" className="orbit-item" onClick={() => setSettingsOpen(true)}><e.icon size={18} /><div><strong>{e.name}</strong><span><i className="status-dot" />{e.value ? "CONFIGURED · UNVERIFIED" : "NOT CONFIGURED"}</span></div><ArrowUpRight size={13} /></Button>)}</div></section>
+              <section className="command-section"><div className="section-title"><div className="flex items-center gap-3"><div className="voice-icon"><Mic size={18} /></div><div><span className="scarlet-eyebrow">VOICE / COMMAND CHANNEL</span><p>{micState === "listening" ? "Listening…" : micState === "transcribing" ? "Transcribing…" : "What’s on your mind?"}</p></div></div><Button variant="outline" size="sm" onClick={toggleVoiceMode} aria-pressed={voiceMode === "continuous"} title="Toggle continuous voice">{voiceMode === "continuous" ? <Zap /> : <Mic />}{voiceMode === "continuous" ? "LIVE VOICE" : "PUSH TO TALK"}</Button></div>{composer}{messages.length > 0 && <div className="latest-notice" role="status">{thinking ? "Processing your command…" : messages[messages.length - 1]?.role === "system-error" ? "Command could not be completed. See conversation for details." : "Command added to conversation."}<Button variant="link" size="sm" onClick={() => setView("conversation")}>View conversation<ArrowUpRight /></Button></div>}</section>
+            </>}
+            {view === "conversation" && <section className="conversation-view"><div className="section-title"><h2>Conversation</h2><Button variant="outline" size="sm" onClick={toggleVoiceMode}><Mic />{voiceMode === "continuous" ? "LIVE VOICE" : "PUSH TO TALK"}</Button></div>{timeline}{composer}</section>}
+            {view === "services" && <section className="services-view"><div className="section-title"><h2>Connected services</h2><Button variant="outline" size="sm" onClick={() => setSettingsOpen(true)}><SettingsIcon />Configure</Button></div>{endpoints.map(e => <div className="service-row" key={e.name}><e.icon size={22} /><div><h3>{e.label}</h3><p>{e.value ? "Endpoint configured · connection not verified" : "Configuration required"}</p></div><Button variant="ghost" size="icon" aria-label={"Configure " + e.label} onClick={() => setSettingsOpen(true)}><ArrowUpRight /></Button></div>)}</section>}
+            {view === "diagnostics" && <section className="diagnostics-view"><div className="section-title"><h2>Gateway log</h2><span className="scarlet-eyebrow">{messages.filter(m => m.role === "system-error").length} EVENTS</span></div>{messages.filter(m => m.role === "system-error").length === 0 ? <div className="timeline-empty"><Activity /><span>No errors reported in this session.</span></div> : messages.map(m => m.role === "system-error" ? <div className="diagnostic-line" key={m.id}><time>{m.ts.toLocaleTimeString("en-GB")}</time><span>{m.message}</span></div> : null)}</section>}
+          </main>
+          <footer className="scarlet-footer"><span>SCARLET HUD <span className="text-primary">/</span> JARVIS CONTROL SYSTEM</span><span><span className="status-dot" />REAL ENDPOINTS ONLY</span></footer>
         </div>
-      </main>
-
-      {statusOpen && (
-        <div className="fixed inset-0 z-40 lg:hidden">
-          <div
-            className="absolute inset-0 bg-jarvis-deep/80 backdrop-blur-sm animate-fade-up"
-            onClick={() => setStatusOpen(false)}
-          />
-          <div className="absolute right-0 top-0 bottom-0 w-[88%] max-w-sm p-4 animate-fade-up overflow-y-auto scrollbar-thin">
-            <button
-              onClick={() => setStatusOpen(false)}
-              className="absolute top-6 right-6 z-10 p-2 rounded-lg bg-card/80 border border-border"
-              aria-label="Close"
-            >
-              <X className="w-4 h-4" />
-            </button>
-            <StatusPanel
-              onOpenSettings={() => {
-                setStatusOpen(false);
-                setSettingsOpen(true);
-              }}
-            />
-          </div>
-        </div>
-      )}
-
+      </div>
       <SettingsDialog open={settingsOpen} onClose={() => setSettingsOpen(false)} />
     </div>
   );
