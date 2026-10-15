@@ -12,7 +12,9 @@ export function HudOrb({ state, level = 0, density = "high", paused = false, onS
     const ctx = canvas?.getContext("2d");
     if (!canvas || !ctx) return;
     const css = getComputedStyle(document.documentElement);
-    const token = (name: string, alpha = 1) => `hsl(${css.getPropertyValue(name).trim()} / ${alpha})`;
+    const colors = new Map<string, string>();
+    for (const name of ["--neuron-blue", "--primary", "--neuron-violet", "--neuron-pink", "--neuron-mint", "--core-white"]) colors.set(name, css.getPropertyValue(name).trim());
+    const token = (name: string, alpha = 1) => `hsl(${colors.get(name)} / ${alpha})`;
     const palette = ["--neuron-blue", "--primary", "--neuron-violet", "--neuron-pink", "--neuron-mint"];
     const reduced = window.matchMedia("(prefers-reduced-motion: reduce)");
     let width = 0, height = 0, frame = 0, lastSample = performance.now(), frames = 0;
@@ -51,15 +53,15 @@ export function HudOrb({ state, level = 0, density = "high", paused = false, onS
         for (const f of filaments) {
           const a = .18 + .33 * (.5 + .5 * Math.sin(t * .001 * f.speed + f.phase));
           ctx.strokeStyle = token(f.color, a * (pass === 0 ? .2 : 1));
-          ctx.lineWidth = f.thickness * (pass === 0 ? 2.1 : 1);
-          ctx.shadowBlur = pass === 0 ? 14 : 0; ctx.shadowColor = token(f.color);
+          ctx.lineWidth = f.thickness * (pass === 0 ? 4.2 : 1);
+          ctx.shadowBlur = 0;
           ctx.beginPath();
           f.points.forEach((p, i) => i === 0 ? ctx.moveTo(p.x, p.y) : ctx.lineTo(p.x, p.y));
           ctx.stroke();
           if (pass === 1 && f.phase > 4.6) {
             const p = f.points[Math.floor(f.phase) % f.points.length];
             ctx.fillStyle = token(f.color, .4 + .6 * Math.abs(Math.sin(t * .0015 + f.phase)));
-            ctx.shadowBlur = 10; ctx.beginPath(); ctx.arc(p.x, p.y, 1, 0, Math.PI * 2); ctx.fill();
+            ctx.beginPath(); ctx.arc(p.x, p.y, 1, 0, Math.PI * 2); ctx.fill();
           }
         }
       }
@@ -82,8 +84,9 @@ export function HudOrb({ state, level = 0, density = "high", paused = false, onS
       }
       ctx.shadowBlur = 0; ctx.globalCompositeOperation = "source-over";
     };
+    let lastDraw = 0;
     const loop = (time: number) => {
-      draw(time); frames++;
+      if (!reduced.matches && !activity.current.paused && time - lastDraw >= 32) { draw(time); frames++; lastDraw = time; }
       if (time - lastSample >= 1000) {
         activity.current.onStats?.({ fps: activity.current.paused || reduced.matches ? 0 : Math.round(frames * 1000 / (time - lastSample)), links: filaments.length });
         lastSample = time; frames = 0;
