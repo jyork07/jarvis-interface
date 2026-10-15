@@ -1,4 +1,4 @@
-# SCARLET HUD redesign
-- [x] Match the supplied Live Control System reference and preserve real chat/voice.
-- [x] Add truthful service states and working navigation for existing capabilities.
-- [x] Verify the redesigned interface and command/error flow.
+# SCARLET neural reference redesign
+- [ ] Match the new full-screen neural reference, preserving real chat and voice.
+- [ ] Add working visual density, pause, fullscreen and connection controls with truthful service states.
+- [ ] Verify desktop/mobile appearance and command/error flow.
