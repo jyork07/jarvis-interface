@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { JarvisConfig, loadConfig, saveConfig } from "@/services/config";
 import { X } from "lucide-react";
+import { Button } from "@/components/ui/button";
 
 interface Props {
   open: boolean;
@@ -47,6 +48,13 @@ export function SettingsDialog({ open, onClose }: Props) {
     if (open) setConfig(loadConfig());
   }, [open]);
 
+  useEffect(() => {
+    if (!open) return;
+    const escape = (event: KeyboardEvent) => { if (event.key === "Escape") onClose(); };
+    window.addEventListener("keydown", escape);
+    return () => window.removeEventListener("keydown", escape);
+  }, [open, onClose]);
+
   if (!open) return null;
 
   const save = () => {
@@ -57,30 +65,31 @@ export function SettingsDialog({ open, onClose }: Props) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-jarvis-deep/80 backdrop-blur-md animate-fade-up" onClick={onClose} />
-      <div className="relative glass-panel rounded-2xl w-full max-w-lg max-h-[90vh] flex flex-col animate-fade-up">
+      <div role="dialog" aria-modal="true" aria-labelledby="endpoint-title" className="relative glass-panel rounded-sm w-full max-w-lg max-h-[90vh] flex flex-col animate-fade-up">
         <div className="flex items-center justify-between px-5 py-4 border-b border-border/40">
           <div>
-            <h2 className="text-sm font-semibold tracking-wide glow-text">Endpoint Configuration</h2>
+            <h2 id="endpoint-title" className="text-sm font-semibold glow-text">Endpoint Configuration</h2>
             <p className="text-[10px] uppercase tracking-[0.2em] text-muted-foreground mt-0.5">
               Real endpoints only · no mock fallbacks
             </p>
           </div>
-          <button
+          <Button variant="outline" size="icon"
             onClick={onClose}
             className="p-2 rounded-lg border border-border/60 bg-card/60 hover:border-jarvis-glow/50"
             aria-label="Close"
           >
             <X className="w-4 h-4" />
-          </button>
+          </Button>
         </div>
 
         <div className="flex-1 overflow-y-auto scrollbar-thin px-5 py-4 space-y-4">
           {FIELDS.map((f) => (
             <div key={f.key}>
-              <label className="text-[10px] uppercase tracking-[0.18em] text-muted-foreground block mb-1.5">
+              <label htmlFor={f.key} className="text-[10px] uppercase text-muted-foreground block mb-1.5">
                 {f.label}
               </label>
               <input
+                id={f.key}
                 type={f.type ?? "text"}
                 value={config[f.key]}
                 onChange={(e) => setConfig({ ...config, [f.key]: e.target.value })}
@@ -95,18 +104,18 @@ export function SettingsDialog({ open, onClose }: Props) {
         </div>
 
         <div className="px-5 py-3 border-t border-border/40 flex justify-end gap-2">
-          <button
+          <Button variant="outline"
             onClick={onClose}
             className="px-4 py-2 rounded-lg text-sm border border-border/60 bg-card/60 hover:bg-card transition"
           >
             Cancel
-          </button>
-          <button
+          </Button>
+          <Button
             onClick={save}
-            className="px-4 py-2 rounded-lg text-sm font-medium bg-gradient-to-br from-jarvis-glow to-jarvis-teal text-jarvis-deep shadow-[0_0_24px_hsl(var(--jarvis-glow)/0.3)] hover:shadow-[0_0_32px_hsl(var(--jarvis-glow)/0.55)] transition"
+            className="rounded-sm"
           >
             Save
-          </button>
+          </Button>
         </div>
       </div>
     </div>
